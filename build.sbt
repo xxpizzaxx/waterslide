@@ -23,8 +23,8 @@ libraryDependencies ++= Seq(
   "org.http4s"                       %% "http4s-circe"              % HTTP4S_VERSION,
   "org.http4s"                       %% "http4s-json4s"             % HTTP4S_VERSION,
   "io.spray"                         %% "spray-caching"             % "1.3.3",
-  "org.json4s"                       %% "json4s-jackson"            % "3.3.0"
-
+  "org.json4s"                       %% "json4s-jackson"            % "3.3.0",
+  "com.flipkart.zjsonpatch"          % "zjsonpatch"                 % "0.2.3"
 )
 
 // test frameworks and tools
