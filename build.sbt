@@ -1,4 +1,4 @@
-name := "pizza-sov-relay-v2"
+name := "waterslide"
 
 version := "1.0"
 
@@ -22,9 +22,14 @@ libraryDependencies ++= Seq(
   "org.http4s"                       %% "http4s-blaze-client"       % HTTP4S_VERSION,
   "org.http4s"                       %% "http4s-circe"              % HTTP4S_VERSION,
   "org.http4s"                       %% "http4s-json4s"             % HTTP4S_VERSION,
+  // cache
   "io.spray"                         %% "spray-caching"             % "1.3.3",
+  // json4s
   "org.json4s"                       %% "json4s-jackson"            % "3.3.0",
-  "com.flipkart.zjsonpatch"          % "zjsonpatch"                 % "0.2.3"
+  // diff library
+  "com.flipkart.zjsonpatch"          % "zjsonpatch"                 % "0.2.3",
+  // command line
+  "com.github.scopt"                 %% "scopt"                     % "3.3.0"
 )
 
 // test frameworks and tools

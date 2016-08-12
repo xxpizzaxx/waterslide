@@ -1,79 +1,36 @@
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.atomic.AtomicReference
+import scopt.OptionParser
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.flipkart.zjsonpatch.JsonDiff
-import org.http4s._
-import org.http4s.server.blaze.BlazeBuilder
-import org.http4s.websocket.WebsocketBits._
-import org.http4s.dsl._
-import org.http4s.server.websocket._
+object Main {
 
-import scala.concurrent.Await
-import scala.concurrent.duration._
-import scalaz.concurrent.Task
-import scalaz.concurrent.Strategy
-import org.http4s.client.blaze._
+  case class Config(host: String = "localhost", port: Int = 8090, url: String = "http://localhost/", ttl: Int = 30)
 
-import scalaz.stream.{Process, Sink}
-import scalaz.stream.{DefaultScheduler, Exchange}
-import scalaz.stream.time.awakeEvery
-import scalaz.stream.async.unboundedQueue
-import spray.caching.{Cache, LruCache}
+  val parser = new OptionParser[Config]("waterslide") {
+    head("waterslide, the polling/websocket slide")
 
-import scala.concurrent.ExecutionContext.Implicits.global
-import org.json4s._
-import org.json4s.jackson.JsonMethods._
-import org.json4s.jackson.JsonMethods._
-import org.json4s.JsonDSL._
+    opt[String]("host").action { (x, c) =>
+      c.copy(host = x)
+    }.optional().text("defaults to localhost")
+    opt[Int]("port").action { (x, c) =>
+      c.copy(port = x)
+    }.optional().text("defaults to 8090")
+    opt[Int]("ttl").action { (x, c) =>
+      c.copy(ttl = x)
+    }.optional().text("defaults to 30 seconds")
+    arg[String]("url").action { (x, c) =>
+      c.copy(url = x)
+    }.text("required, URL to poll and serve")
 
-import scalaz.stream.wye
-import scala.collection.JavaConverters._
+  }
 
-object BlazeWebSocketExample extends App {
-
-  val client = PooledHttp1Client()
-
-  val jsonMapper = new ObjectMapper()
-
-  val SOVTIMERS = "https://crest-tq.eveonline.com/sovereignty/campaigns/"
-  val previous: AtomicReference[String] = new AtomicReference[String]("{}")
-  val cache: Cache[(String, String)] = LruCache[(String, String)](timeToLive = 30 seconds)
-  def getLatestCrest(u: String): (String, String) = {
-    val r = cache(u) {
-      val newResult = client.getAs[String](u).run
-      val old = previous.getAndSet(newResult)
-      (old, newResult)
+  def main(args: Array[String]): Unit = {
+    parser.parse(args, Config()) match {
+      case Some(config) =>
+        val w = new WaterslideServer(config.host, config.port, config.url, config.ttl)
+        println(s"Server starting on ${config.host}:${config.port}, serving ${config.url} with updates every ${config.ttl} seconds")
+        w.server.run.awaitShutdown()
+      case None =>
+        ()
     }
-    Await.result(r, 30.seconds)
   }
 
-  val route = HttpService {
-    case GET -> Root / "sov" =>
-      println("connecting!")
-      val q = new LinkedBlockingQueue[String]()
-      val (_, initialData) = getLatestCrest(SOVTIMERS)
-      val initialStream: Process[Task, Text] = Process.emit(Text(compact(render("initial" -> parse(initialData)))))
-      val stream = awakeEvery(30 seconds)(Strategy.DefaultStrategy, DefaultScheduler).map{ d =>
-        println("streaming!")
-        val (old, current) = getLatestCrest(SOVTIMERS)
-        val patch = JsonDiff.asJson(jsonMapper.readTree(old), jsonMapper.readTree(current))
-        println(patch)
-        Text(patch.toString)
-      }.filter { f => f.str != "[]" }
-      val src: Process[Task, Text] = initialStream ++ stream
-      val sink: Sink[Task, WebSocketFrame] = Process.constant {
-        case Text(t, _) => Task.delay( println(t))
-        case f       => Task.delay(println(s"Unknown type: $f"))
-      }
-      WS(Exchange(src, sink))
-  }
-
-  val server = BlazeBuilder.bindHttp(8090)
-    .withWebSockets(true)
-    .mountService(route, "/http4s")
-    .start
-
-  println("running bound to localhost:8090/http4s")
-  server.run.awaitShutdown()
 }
