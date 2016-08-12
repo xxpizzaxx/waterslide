@@ -29,7 +29,12 @@ libraryDependencies ++= Seq(
   // diff library
   "com.flipkart.zjsonpatch"          % "zjsonpatch"                 % "0.2.3",
   // command line
-  "com.github.scopt"                 %% "scopt"                     % "3.3.0"
+  "com.github.scopt"                 %% "scopt"                     % "3.3.0",
+  // logging
+  "org.slf4j"                        % "slf4j-simple"               % "1.7.21",
+  // metrics
+  "io.dropwizard.metrics"            % "metrics-core"               % "3.1.2",
+  "io.dropwizard.metrics"            % "metrics-graphite"           % "3.1.2"
 )
 
 // test frameworks and tools
