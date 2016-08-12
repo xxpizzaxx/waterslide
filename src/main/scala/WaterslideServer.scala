@@ -47,6 +47,7 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int) {
 
   val route = HttpService {
     case GET -> Root =>
+      val pings = awakeEvery(10 seconds)(Strategy.DefaultStrategy, DefaultScheduler).map { _ => Ping() }
       val src = awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
         getLatestCrest(url) // this function is memoized
       }.zipWithPrevious.filter {
@@ -62,7 +63,8 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int) {
       case Text(t, _) => Task.delay(println(t))
       case f => Task.delay(println(s"Unknown type: $f"))
     }
-      WS(Exchange(src, sink))
+      val joinedOutput = wye(pings, src)(wye.mergeHaltR)
+      WS(Exchange(joinedOutput, sink))
   }
 
   val server = BlazeBuilder.bindHttp(host = "localhost", port = port)
