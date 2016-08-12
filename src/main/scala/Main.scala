@@ -1,4 +1,5 @@
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.atomic.AtomicReference
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.flipkart.zjsonpatch.JsonDiff
@@ -36,42 +37,31 @@ object BlazeWebSocketExample extends App {
   val jsonMapper = new ObjectMapper()
 
   val SOVTIMERS = "https://crest-tq.eveonline.com/sovereignty/campaigns/"
-  val cache: Cache[String] = LruCache[String](timeToLive = 30 seconds)
-  def getLatestCrest(u: String): String = {
+  val previous: AtomicReference[String] = new AtomicReference[String]("{}")
+  val cache: Cache[(String, String)] = LruCache[(String, String)](timeToLive = 30 seconds)
+  def getLatestCrest(u: String): (String, String) = {
     val r = cache(u) {
-      client.getAs[String](u).run
+      val newResult = client.getAs[String](u).run
+      val old = previous.getAndSet(newResult)
+      (old, newResult)
     }
     Await.result(r, 30.seconds)
   }
 
   val route = HttpService {
-    case GET -> Root / "hello" =>
-      Ok("Hello world.")
-
     case GET -> Root / "sov" =>
       println("connecting!")
       val q = new LinkedBlockingQueue[String]()
-      val initialData = getLatestCrest(SOVTIMERS)
-      q.put(initialData)
+      val (_, initialData) = getLatestCrest(SOVTIMERS)
       val initialStream: Process[Task, Text] = Process.emit(Text(compact(render("initial" -> parse(initialData)))))
       val stream = awakeEvery(30 seconds)(Strategy.DefaultStrategy, DefaultScheduler).map{ d =>
         println("streaming!")
-        val current = getLatestCrest(SOVTIMERS)
-        val old = q.poll()
-        q.put(current)
+        val (old, current) = getLatestCrest(SOVTIMERS)
         val patch = JsonDiff.asJson(jsonMapper.readTree(old), jsonMapper.readTree(current))
         println(patch)
         Text(patch.toString)
-      }.filter { f => f.str != "{}" }
+      }.filter { f => f.str != "[]" }
       val src: Process[Task, Text] = initialStream ++ stream
-      val sink: Sink[Task, WebSocketFrame] = Process.constant {
-        case Text(t, _) => Task.delay( println(t))
-        case f       => Task.delay(println(s"Unknown type: $f"))
-      }
-      WS(Exchange(src, sink))
-
-    case req@ GET -> Root / "ws" =>
-      val src = awakeEvery(1.seconds)(Strategy.DefaultStrategy, DefaultScheduler).map{ d => Text(s"Ping! $d") }
       val sink: Sink[Task, WebSocketFrame] = Process.constant {
         case Text(t, _) => Task.delay( println(t))
         case f       => Task.delay(println(s"Unknown type: $f"))
