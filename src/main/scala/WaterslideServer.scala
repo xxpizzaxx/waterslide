@@ -60,7 +60,7 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int) {
           compact(render("diff" -> parse(diffs)))
       }.map { x => Text(x) } // shove it in a websocket frame
     val sink: Sink[Task, WebSocketFrame] = Process.constant {
-      case Text(t, _) => Task.delay(println(t))
+      case Ping(x) => Task.delay(Pong(x))
       case f => Task.delay(println(s"Unknown type: $f"))
     }
       val joinedOutput = wye(pings, src)(wye.mergeHaltR)
