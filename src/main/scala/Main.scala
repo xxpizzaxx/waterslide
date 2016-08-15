@@ -6,7 +6,7 @@ import scopt.OptionParser
 
 object Main {
 
-  case class Config(host: String = "localhost", port: Int = 8090, url: String = "http://localhost/", ttl: Int = 30, consoleMetrics: Boolean = false, graphite: Option[String] = None)
+  case class Config(host: String = "localhost", port: Int = 8090, url: String = "http://localhost/", ttl: Int = 30, consoleMetrics: Boolean = false, graphite: Option[String] = None, graphitePrefix: String = "moe.pizza.waterslide")
 
   val parser = new OptionParser[Config]("waterslide") {
     head("waterslide, the polling/websocket slide")
@@ -26,6 +26,9 @@ object Main {
     opt[String]("graphite").action { (x, c) =>
       c.copy(graphite = Some(x))
     }.optional().text("address to the graphite server, sends metrics if enabled")
+    opt[String]("graphite_prefix").action { (x, c) =>
+      c.copy(graphitePrefix = x)
+    }.optional().text("prefix for graphite metrics, defaults to moe.pizza.waterslide")
     arg[String]("url").action { (x, c) =>
       c.copy(url = x)
     }.text("required, URL to poll and serve")
@@ -49,6 +52,7 @@ object Main {
             .forRegistry(metrics)
             .convertRatesTo(TimeUnit.SECONDS)
             .convertDurationsTo(TimeUnit.MILLISECONDS)
+            .prefixedWith(config.graphitePrefix)
             .build(new Graphite(g, 2003))
             .start(1, TimeUnit.SECONDS)
 
