@@ -56,8 +56,8 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
             }.map {
               OM.readTree
             }
-            json.map(-\/.apply).getOrElse(\/-(Response().withBody("Invalid JSON").run))
-          case _ => \/-(resp)
+            json.map(_.left).getOrElse(Response().withBody("Invalid JSON").run.right)
+          case _ => resp.right
         }
         r
       }
