@@ -27,6 +27,8 @@ import scalaz._
 import Scalaz._
 import scalaz.stream.{DefaultScheduler, Exchange, Process, Sink, wye}
 import org.http4s.EntityDecoder._
+
+import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 
 class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metrics: Option[MetricRegistry]) {
@@ -37,15 +39,21 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
   val tick     = metrics.map(_.meter("tick"))
   val ping     = metrics.map(_.meter("ping"))
   val initial  = metrics.map(_.meter("initial"))
+  val unavail  = metrics.map(_.meter("unavailable"))
   val diff     = metrics.map(_.meter("diff"))
 
   // misc http things
   val client = PooledHttp1Client()
   val OM     = new ObjectMapper()
 
-  // cache and cache usage
-  val cache: Cache[\/[JsonNode, Response]] = LruCache[\/[JsonNode, Response]](timeToLive = ttl.seconds)
-  def getLatestCrest(u: String): \/[JsonNode, Response] = {
+  // last valid response cache
+  val lastValid = TrieMap[String, JsonNode]()
+
+  type NodeAndBoolean = (JsonNode, Boolean)
+
+  // current response cache
+  val cache: Cache[NodeAndBoolean] = LruCache[NodeAndBoolean](timeToLive = ttl.seconds)
+  def getLatestCrest(u: String): NodeAndBoolean = {
     val r = cache(u) {
       urlFetch.foreach(_.mark())
       val resp = client
@@ -53,15 +61,17 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
           Task(x)
         }
         .run
-      val r: \/[JsonNode, Response] = resp.status match {
+      val r: NodeAndBoolean = resp.status match {
         case Status.Ok =>
           val json = Option(resp).map { x =>
             EntityDecoder.decodeString(x)(Charset.`UTF-8`).run
-          }.map {
-            OM.readTree
+          }.map { j =>
+            val res = OM.readTree(j)
+            lastValid.put(u, res)
+            (res, true)
           }
-          json.map(_.left).getOrElse(Response().withBody("Invalid JSON").run.right)
-        case _ => resp.right
+          json.getOrElse((lastValid.get(u).getOrElse(OM.readTree("{}")), false))
+        case _ => (lastValid.get(u).getOrElse(OM.readTree("{}")), false)
       }
       r
     }
@@ -75,19 +85,28 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
         getLatestCrest(url) // this function is memoized
       }
       t.get
-    }.filter { _.isLeft }.map { x =>
-      x.toEither.left.get
     }.zipWithPrevious.filter {
       case (x, y) => !x.contains(y) // deduplicate
-    }.map {
-      // transform to JSON
-      case (None, current) =>
-        initial.foreach(_.mark())
-        s"""{"initial":${current.toString}}""" // first run!
-      case (Some(prev), current) => // we've had a change in the JSON
-        diff.foreach(_.mark())
-        val diffs = JsonDiff.asJson(prev, current).toString
-        s"""{"diff":${diffs}}"""
+    }.flatMap { r =>
+      val mainResponse = r match {
+        // transform to JSON
+        case (None, (current, _)) =>
+          initial.foreach(_.mark())
+          Some(s"""{"initial":${current.toString}}""") // first run!
+        case (Some((prev, _)), (current, true)) => // we've had a change in the JSON
+          diff.foreach(_.mark())
+          val diffs = JsonDiff.asJson(prev, current).toString
+          Some(s"""{"diff":${diffs}}""")
+        case _ => None
+      }
+      val extra: Option[String] = r match {
+        case (_, (_, false)) =>
+          unavail.foreach(_.mark())
+          Some(s"""{"status":"API unavailable, serving cached data"}""")
+        case _ =>
+          None
+      }
+      Process.emitAll(List(mainResponse, extra).flatten)
     }
   }
 
@@ -97,9 +116,7 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
         ping.foreach(_.mark())
         Ping()
       }
-      val src = streamIt.map { x =>
-        Text(x)
-      } // shove it in a websocket frame
+      val src = streamIt.map{ x => Text(x) }
       val sink: Sink[Task, WebSocketFrame] = Process.constant {
         case Ping(x) => Task.delay(Pong(x))
         case f       => Task.delay(println(s"Unknown type: $f"))
