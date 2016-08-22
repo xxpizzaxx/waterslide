@@ -41,48 +41,54 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
 
   // misc http things
   val client = PooledHttp1Client()
-  val OM = new ObjectMapper()
+  val OM     = new ObjectMapper()
 
   // cache and cache usage
   val cache: Cache[\/[JsonNode, Response]] = LruCache[\/[JsonNode, Response]](timeToLive = ttl.seconds)
   def getLatestCrest(u: String): \/[JsonNode, Response] = {
-      val r = cache(u) {
-        urlFetch.foreach(_.mark())
-        val resp = client.get[Response](u) { x => Task(x) }.run
-        val r: \/[JsonNode, Response] = resp.status match {
-          case Status.Ok =>
-            val json = Option(resp).map { x =>
-              EntityDecoder.decodeString(x)(Charset.`UTF-8`).run
-            }.map {
-              OM.readTree
-            }
-            json.map(_.left).getOrElse(Response().withBody("Invalid JSON").run.right)
-          case _ => resp.right
+    val r = cache(u) {
+      urlFetch.foreach(_.mark())
+      val resp = client
+        .get[Response](u) { x =>
+          Task(x)
         }
-        r
+        .run
+      val r: \/[JsonNode, Response] = resp.status match {
+        case Status.Ok =>
+          val json = Option(resp).map { x =>
+            EntityDecoder.decodeString(x)(Charset.`UTF-8`).run
+          }.map {
+            OM.readTree
+          }
+          json.map(_.left).getOrElse(Response().withBody("Invalid JSON").run.right)
+        case _ => resp.right
       }
-      Await.result(r, ttl.seconds)
+      r
+    }
+    Await.result(r, ttl.seconds)
   }
 
   def streamIt = {
-     awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
-        tick.foreach(_.mark())
-       val t = Try {
-         getLatestCrest(url) // this function is memoized
-       }
-       t.get
-      }.filter{_.isLeft}.map{x => x.toEither.left.get}.zipWithPrevious.filter {
-        case (x, y) => !x.contains(y) // deduplicate
-      }.map {
-        // transform to JSON
-        case (None, current) =>
-          initial.foreach(_.mark())
-          s"""{"initial":${current.toString}}""" // first run!
-        case (Some(prev), current) => // we've had a change in the JSON
-          diff.foreach(_.mark())
-          val diffs = JsonDiff.asJson(prev, current).toString
-          s"""{"diff":${diffs}}"""
+    awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
+      tick.foreach(_.mark())
+      val t = Try {
+        getLatestCrest(url) // this function is memoized
       }
+      t.get
+    }.filter { _.isLeft }.map { x =>
+      x.toEither.left.get
+    }.zipWithPrevious.filter {
+      case (x, y) => !x.contains(y) // deduplicate
+    }.map {
+      // transform to JSON
+      case (None, current) =>
+        initial.foreach(_.mark())
+        s"""{"initial":${current.toString}}""" // first run!
+      case (Some(prev), current) => // we've had a change in the JSON
+        diff.foreach(_.mark())
+        val diffs = JsonDiff.asJson(prev, current).toString
+        s"""{"diff":${diffs}}"""
+    }
   }
 
   val route = HttpService {
@@ -91,19 +97,18 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
         ping.foreach(_.mark())
         Ping()
       }
-      val src = streamIt.map { x => Text(x) } // shove it in a websocket frame
-    val sink: Sink[Task, WebSocketFrame] = Process.constant {
-      case Ping(x) => Task.delay(Pong(x))
-      case f => Task.delay(println(s"Unknown type: $f"))
-    }
+      val src = streamIt.map { x =>
+        Text(x)
+      } // shove it in a websocket frame
+      val sink: Sink[Task, WebSocketFrame] = Process.constant {
+        case Ping(x) => Task.delay(Pong(x))
+        case f       => Task.delay(println(s"Unknown type: $f"))
+      }
       val joinedOutput = wye(pings, src)(wye.mergeHaltR)
       WS(Exchange(joinedOutput, sink))
 
   }
 
-  val server = BlazeBuilder.bindHttp(host = "localhost", port = port)
-    .withWebSockets(true)
-    .mountService(route, "/")
-    .start
+  val server = BlazeBuilder.bindHttp(host = "localhost", port = port).withWebSockets(true).mountService(route, "/").start
 
 }
