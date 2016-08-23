@@ -86,6 +86,7 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
       }
       t.get
     }.zipWithPrevious.filter {
+      case (_, (_, false)) => true // let it through if we're throwing errors
       case (x, y) => !x.contains(y) // deduplicate
     }.flatMap { r =>
       val mainResponse = r match {

@@ -42,6 +42,20 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
     server
   }
 
+  def mockVeryBadServer(port: Int) = {
+    var a = 0
+    val resource = HttpService {
+      case req @ GET -> Root =>
+        a = a + 1
+        a match {
+          case i if i < 2  => Ok(compact(render("value" -> a)))
+          case i if i >= 2 => InternalServerError("<html>oh no</html>")
+        }
+    }
+    val server = BlazeBuilder.bindHttp(port).mountService(resource, "/").start
+    server
+  }
+
   "WaterslideServer" should "accept JSON every X seconds and stream it" in {
     val s  = mockServer(9000).run
     val ws = new WaterslideServer("localhost", 9001, "http://localhost:9000/", 1, None)
@@ -83,5 +97,34 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
             """{"diff":[{"op":"replace","path":"/value","value":3}]}"""
         )
     )
+  }
+
+  "WaterslideServer" should "serve cached data if all current responses are bad, but it had a response once" in {
+    val s  = mockVeryBadServer(9006).run
+    val ws = new WaterslideServer("localhost", 9007, "http://localhost:9006/", 1, None)
+    ws.streamIt.take(3).runLog.run must equal(
+        List(
+            """{"initial":{"value":1}}""",
+            """{"status":"API unavailable, serving cached data"}""",
+            """{"status":"API unavailable, serving cached data"}"""
+        )
+    )
+    println(1)
+    ws.streamIt.take(3).runLog.run must equal(
+        List(
+            """{"initial":{"value":1}}""",
+            """{"status":"API unavailable, serving cached data"}""",
+            """{"status":"API unavailable, serving cached data"}"""
+        )
+    )
+    println(2)
+    ws.streamIt.take(3).runLog.run must equal(
+        List(
+            """{"initial":{"value":1}}""",
+            """{"status":"API unavailable, serving cached data"}""",
+            """{"status":"API unavailable, serving cached data"}"""
+        )
+    )
+    println(3)
   }
 }
