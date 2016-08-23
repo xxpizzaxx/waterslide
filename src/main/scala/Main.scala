@@ -6,7 +6,13 @@ import scopt.OptionParser
 
 object Main {
 
-  case class Config(host: String = "localhost", port: Int = 8090, url: String = "http://localhost/", ttl: Int = 30, consoleMetrics: Boolean = false, graphite: Option[String] = None, graphitePrefix: String = "moe.pizza.waterslide")
+  case class Config(host: String = "localhost",
+                    port: Int = 8090,
+                    url: String = "http://localhost/",
+                    ttl: Int = 30,
+                    consoleMetrics: Boolean = false,
+                    graphite: Option[String] = None,
+                    graphitePrefix: String = "moe.pizza.waterslide")
 
   val parser = new OptionParser[Config]("waterslide") {
     head("waterslide, the polling/websocket slide")
@@ -25,10 +31,12 @@ object Main {
     }.optional().text("dump metrics to the console, defaults off")
     opt[String]("graphite").action { (x, c) =>
       c.copy(graphite = Some(x))
-    }.optional().text("address to the graphite server, sends metrics if enabled")
+    }.optional()
+      .text("address to the graphite server, sends metrics if enabled")
     opt[String]("graphite_prefix").action { (x, c) =>
       c.copy(graphitePrefix = x)
-    }.optional().text("prefix for graphite metrics, defaults to moe.pizza.waterslide")
+    }.optional()
+      .text("prefix for graphite metrics, defaults to moe.pizza.waterslide")
     arg[String]("url").action { (x, c) =>
       c.copy(url = x)
     }.text("required, URL to poll and serve")
@@ -47,7 +55,7 @@ object Main {
             .build()
             .start(30, TimeUnit.SECONDS)
         }
-        config.graphite.foreach{ g =>
+        config.graphite.foreach { g =>
           GraphiteReporter
             .forRegistry(metrics)
             .convertRatesTo(TimeUnit.SECONDS)
@@ -57,8 +65,13 @@ object Main {
             .start(1, TimeUnit.SECONDS)
 
         }
-        val w = new WaterslideServer(config.host, config.port, config.url, config.ttl, Some(metrics))
-        println(s"Server starting on ${config.host}:${config.port}, serving ${config.url} with updates every ${config.ttl} seconds")
+        val w = new WaterslideServer(config.host,
+                                     config.port,
+                                     config.url,
+                                     config.ttl,
+                                     Some(metrics))
+        println(
+            s"Server starting on ${config.host}:${config.port}, serving ${config.url} with updates every ${config.ttl} seconds")
         w.server.run.awaitShutdown()
       case None =>
         ()

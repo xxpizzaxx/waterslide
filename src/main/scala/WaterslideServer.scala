@@ -31,20 +31,24 @@ import org.http4s.EntityDecoder._
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
 
-class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metrics: Option[MetricRegistry]) {
+class WaterslideServer(hostname: String,
+                       port: Int,
+                       url: String,
+                       ttl: Int,
+                       metrics: Option[MetricRegistry]) {
   private[this] val log = getLogger
 
   // metrics
   val urlFetch = metrics.map(_.meter("urlfetch"))
-  val tick     = metrics.map(_.meter("tick"))
-  val ping     = metrics.map(_.meter("ping"))
-  val initial  = metrics.map(_.meter("initial"))
-  val unavail  = metrics.map(_.meter("unavailable"))
-  val diff     = metrics.map(_.meter("diff"))
+  val tick = metrics.map(_.meter("tick"))
+  val ping = metrics.map(_.meter("ping"))
+  val initial = metrics.map(_.meter("initial"))
+  val unavail = metrics.map(_.meter("unavailable"))
+  val diff = metrics.map(_.meter("diff"))
 
   // misc http things
   val client = PooledHttp1Client()
-  val OM     = new ObjectMapper()
+  val OM = new ObjectMapper()
 
   // last valid response cache
   val lastValid = TrieMap[String, JsonNode]()
@@ -52,7 +56,8 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
   type NodeAndBoolean = (JsonNode, Boolean)
 
   // current response cache
-  val cache: Cache[NodeAndBoolean] = LruCache[NodeAndBoolean](timeToLive = ttl.seconds)
+  val cache: Cache[NodeAndBoolean] =
+    LruCache[NodeAndBoolean](timeToLive = ttl.seconds)
   def getLatestCrest(u: String): NodeAndBoolean = {
     val r = cache(u) {
       urlFetch.foreach(_.mark())
@@ -70,8 +75,9 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
             lastValid.put(u, res)
             (res, true)
           }
-          json.getOrElse((lastValid.get(u).getOrElse(OM.readTree("{}")), false))
-        case _ => (lastValid.get(u).getOrElse(OM.readTree("{}")), false)
+          json.getOrElse(
+              (lastValid.getOrElse(u, OM.readTree("{}")), false))
+        case _ => (lastValid.getOrElse(u, OM.readTree("{}")), false)
       }
       r
     }
@@ -112,20 +118,27 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
 
   val route = HttpService {
     case GET -> Root =>
-      val pings = awakeEvery(10 seconds)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
+      val pings = awakeEvery(10 seconds)(Strategy.DefaultStrategy,
+                                         DefaultScheduler).map { _ =>
         ping.foreach(_.mark())
         Ping()
       }
-      val src = streamIt.map{ x => Text(x) }
+      val src = streamIt.map { x =>
+        Text(x)
+      }
       val sink: Sink[Task, WebSocketFrame] = Process.constant {
         case Ping(x) => Task.delay(Pong(x))
-        case f       => Task.delay(println(s"Unknown type: $f"))
+        case f => Task.delay(println(s"Unknown type: $f"))
       }
       val joinedOutput = wye(pings, src)(wye.mergeHaltR)
       WS(Exchange(joinedOutput, sink))
 
   }
 
-  val server = BlazeBuilder.bindHttp(host = "localhost", port = port).withWebSockets(true).mountService(route, "/").start
+  val server = BlazeBuilder
+    .bindHttp(host = "localhost", port = port)
+    .withWebSockets(true)
+    .mountService(route, "/")
+    .start
 
 }
