@@ -6,7 +6,13 @@ import scopt.OptionParser
 
 object Main {
 
-  case class Config(host: String = "localhost", port: Int = 8090, url: String = "http://localhost/", ttl: Int = 30, consoleMetrics: Boolean = false, graphite: Option[String] = None, graphitePrefix: String = "moe.pizza.waterslide")
+  case class Config(host: String = "localhost",
+                    port: Int = 8090,
+                    url: String = "http://localhost/",
+                    ttl: Int = 30,
+                    consoleMetrics: Boolean = false,
+                    graphite: Option[String] = None,
+                    graphitePrefix: String = "moe.pizza.waterslide")
 
   val parser = new OptionParser[Config]("waterslide") {
     head("waterslide, the polling/websocket slide")
@@ -47,7 +53,7 @@ object Main {
             .build()
             .start(30, TimeUnit.SECONDS)
         }
-        config.graphite.foreach{ g =>
+        config.graphite.foreach { g =>
           GraphiteReporter
             .forRegistry(metrics)
             .convertRatesTo(TimeUnit.SECONDS)
