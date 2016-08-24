@@ -77,7 +77,8 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
   }
 
   def streamIt = {
-    awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
+    val initialTick = Process.emit(0 seconds)
+    wye(initialTick, awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler))(wye.merge).map { d =>
       tick.foreach(_.mark())
       val t = Try {
         getLatestCrest(url) // this function is memoized
