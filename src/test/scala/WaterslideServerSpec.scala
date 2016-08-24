@@ -57,8 +57,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
   }
 
   "WaterslideServer" should "accept JSON every X seconds and stream it" in {
-    val s  = mockServer(9000).run
-    val ws = new WaterslideServer("localhost", 9001, "http://localhost:9000/", 1, None)
+    val s  = mockServer(9500).run
+    val ws = new WaterslideServer("localhost", 9501, "http://localhost:9500/", 1, None)
     ws.streamIt.take(2).runLog.run must equal(
         List(
             """{"initial":{"value":1}}""",
@@ -68,8 +68,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
   }
 
   "WaterslideServer" should "multiplex to multiple streams" in {
-    val s       = mockServer(9002).run
-    val ws      = new WaterslideServer("localhost", 9003, "http://localhost:9002/", 2, None)
+    val s       = mockServer(9502).run
+    val ws      = new WaterslideServer("localhost", 9503, "http://localhost:9502/", 2, None)
     val stream1 = ws.streamIt
     val stream2 = ws.streamIt
     val merged  = wye(stream1, stream2)(wye.mergeHaltBoth)
@@ -88,8 +88,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
   }
 
   "WaterslideServer" should "cope with bad responses" in {
-    val s  = mockBadServer(9004).run
-    val ws = new WaterslideServer("localhost", 9005, "http://localhost:9004/", 1, None)
+    val s  = mockBadServer(9504).run
+    val ws = new WaterslideServer("localhost", 9505, "http://localhost:9504/", 1, None)
     ws.streamIt.take(3).runLog.run must equal(
         List(
             """{"initial":{"value":1}}""",
@@ -100,8 +100,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
   }
 
   "WaterslideServer" should "serve cached data if all current responses are bad, but it had a response once" in {
-    val s  = mockVeryBadServer(9006).run
-    val ws = new WaterslideServer("localhost", 9007, "http://localhost:9006/", 1, None)
+    val s  = mockVeryBadServer(9506).run
+    val ws = new WaterslideServer("localhost", 9507, "http://localhost:9506/", 1, None)
     ws.streamIt.take(3).runLog.run must equal(
         List(
             """{"initial":{"value":1}}""",

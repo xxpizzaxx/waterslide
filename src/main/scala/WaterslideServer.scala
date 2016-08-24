@@ -57,15 +57,13 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
     val r = cache(u) {
       urlFetch.foreach(_.mark())
       val resp = client
-        .get[Response](u) { x =>
-          Task(x)
+        .get[(Status, String)](u) { x =>
+          EntityDecoder.decodeString(x)(Charset.`UTF-8`).map{b => (x.status, b)}
         }
         .run
-      val r: NodeAndBoolean = resp.status match {
-        case Status.Ok =>
-          val json = Option(resp).map { x =>
-            EntityDecoder.decodeString(x)(Charset.`UTF-8`).run
-          }.map { j =>
+      val r: NodeAndBoolean = resp match {
+        case (Status.Ok, b) =>
+          val json = Option(b).map { j =>
             val res = OM.readTree(j)
             lastValid.put(u, res)
             (res, true)
@@ -112,7 +110,7 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
   }
 
   val route = HttpService {
-    case GET -> Root =>
+    case _ =>
       val pings = awakeEvery(10 seconds)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
         ping.foreach(_.mark())
         Ping()
