@@ -58,7 +58,9 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
       urlFetch.foreach(_.mark())
       val resp = client
         .get[(Status, String)](u) { x =>
-          EntityDecoder.decodeString(x)(Charset.`UTF-8`).map{b => (x.status, b)}
+          EntityDecoder.decodeString(x)(Charset.`UTF-8`).map { b =>
+            (x.status, b)
+          }
         }
         .run
       val r: NodeAndBoolean = resp match {
@@ -80,13 +82,15 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
     val initialTick = Process.emit(0 seconds)
     wye(initialTick, awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler))(wye.merge).map { d =>
       tick.foreach(_.mark())
-      val t = Try {
+      Try {
         getLatestCrest(url) // this function is memoized
       }
-      t.get
+    }.flatMap {
+      case scala.util.Success(s) => Process.emit(s)
+      case scala.util.Failure(f) => log.warn(f)("failure when polling HTTP"); Process.empty
     }.zipWithPrevious.filter {
       case (_, (_, false)) => true // let it through if we're throwing errors
-      case (x, y) => !x.contains(y) // deduplicate
+      case (x, y)          => !x.contains(y) // deduplicate
     }.flatMap { r =>
       val mainResponse = r match {
         // transform to JSON
