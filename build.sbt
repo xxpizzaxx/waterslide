@@ -61,6 +61,8 @@ dockerfile in docker := {
     env("gc", "-XX:+UseG1GC")
     env("port", "8080")
     env("url", "https://crest-tq.eveonline.com/sovereignty/campaigns/")
-    entryPointRaw(s"java -Xms$$xms -Xmx$$xmx $$gc -jar $artifactTargetPath --port $$port $$url")
+    env("host", "localhost")
+    env("ttl", "30")
+    entryPointRaw(s"java -Xms$$xms -Xmx$$xmx $$gc -jar $artifactTargetPath --port $$port --host $$host --ttl $$ttl $$url")
   }
 }
