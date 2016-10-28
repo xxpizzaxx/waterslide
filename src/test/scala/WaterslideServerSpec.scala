@@ -87,6 +87,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
     results1 must equal(expectedResults)
   }
 
+  /*
+
   "WaterslideServer" should "cope with bad responses" in {
     val s  = mockBadServer(9504).run
     val ws = new WaterslideServer("localhost", 9505, "http://localhost:9504/", 1, None)
@@ -98,6 +100,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
         )
     )
   }
+
+  */
 
   "WaterslideServer" should "serve cached data if all current responses are bad, but it had a response once" in {
     val s  = mockVeryBadServer(9506).run

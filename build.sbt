@@ -45,3 +45,22 @@ libraryDependencies ++= Seq(
 )
 
 testOptions in Test += Tests.Argument(TestFrameworks.ScalaCheck, "-maxSize", "5", "-minSuccessfulTests", "33", "-workers", "1", "-verbosity", "1")
+
+enablePlugins(DockerPlugin)
+dockerfile in docker := {
+// The assembly task generates a fat JAR file
+  val artifact: File = assembly.value
+  val artifactTargetPath = s"/app/${artifact.name}"
+
+  new Dockerfile {
+    from("java")
+    add(artifact, artifactTargetPath)
+    expose(8080)
+    env("xms", "100m")
+    env("xmx", "500m")
+    env("gc", "-XX:+UseG1GC")
+    env("port", "8080")
+    env("url", "https://crest-tq.eveonline.com/sovereignty/campaigns/")
+    entryPointRaw(s"java -Xms$$xms -Xmx$$xmx $$gc -jar $artifactTargetPath --port $$port $$url")
+  }
+}
