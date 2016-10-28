@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: waterslide
+spec:
+  ports:
+  - port: 8080
+  selector:
+    name: waterslide
+  type: NodePort
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: waterslide
+spec:
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        name: waterslide
+    spec:
+      containers:
+      - name: waterslide-crest-sov-tq
+        image: andimiller/waterslide
+        env:
+        - name: url
+          value: "https://crest-tq.eveonline.com/sovereignty/campaigns/"
+        - name: port
+          value: "8080"
+        - name: ttl
+          value: "30"
+        - name: host
+          value: "0.0.0.0"
+        ports:
+        - containerPort: 8080
+          protocol: "TCP"
