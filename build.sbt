@@ -64,6 +64,6 @@ dockerfile in docker := {
     env("host", "localhost")
     env("ttl", "30")
     env("graphite", "")
-    runShell(s"java -Xms$$xms -Xmx$$xmx $$gc -jar $artifactTargetPath --port $$port --host $$host --ttl $$ttl $$graphite $$url")
+    cmdRaw(s"""/bin/sh -c "java -Xms$$xms -Xmx$$xmx $$gc -jar $artifactTargetPath --port $$port --host $$host --ttl $$ttl $$graphite $$url"""")
   }
 }
