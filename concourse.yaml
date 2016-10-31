@@ -7,7 +7,7 @@ image_resource:
     repository: hseeberger/scala-sbt
 
 inputs:
-  - name: waterfall-source
+  - name: waterslide
 
 run:
   path: sbt
