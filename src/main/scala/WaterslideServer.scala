@@ -30,6 +30,8 @@ import org.http4s.EntityDecoder._
 
 import scala.collection.concurrent.TrieMap
 import scala.concurrent.Future
+import scalaz.stream.async.mutable.Topic
+import scalaz.stream.time
 
 class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metrics: Option[MetricRegistry]) {
   private[this] val log = getLogger
@@ -49,68 +51,45 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
   // last valid response cache
   val lastValid = TrieMap[String, JsonNode]()
 
-  type NodeAndBoolean = (JsonNode, Boolean)
 
-  // current response cache
-  val cache: Cache[NodeAndBoolean] = LruCache[NodeAndBoolean](timeToLive = ttl.seconds)
-  def getLatestCrest(u: String): NodeAndBoolean = {
-    val r = cache(u) {
+  val topic: Topic[JsonNode] = scalaz.stream.async.topic[JsonNode](
+    time.awakeEvery(ttl.seconds)(Strategy.DefaultStrategy, DefaultScheduler).map { _ =>
       urlFetch.foreach(_.mark())
-      val resp = client
-        .get[(Status, String)](u) { x =>
-          EntityDecoder.decodeString(x)(Charset.`UTF-8`).map { b =>
-            (x.status, b)
-          }
+      client.get[(Status, String)](url) { x =>
+        EntityDecoder.decodeString(x)(Charset.`UTF-8`).map { b =>
+          (x.status, b)
         }
-        .run
-      val r: NodeAndBoolean = resp match {
-        case (Status.Ok, b) =>
-          val json = Option(b).map { j =>
-            val res = OM.readTree(j)
-            lastValid.put(u, res)
-            (res, true)
-          }
-          json.getOrElse((lastValid.getOrElse(u, OM.readTree("{}")), false))
-        case _ => (lastValid.getOrElse(u, OM.readTree("{}")), false)
-      }
-      r
+      }.run
+    }.filter { case (status, _) =>
+      // we only want Ok results
+      status == Status.Ok
+    }.flatMap { case (_, body) =>
+      // we only want valid JSON
+      Try{OM.readTree(body)}.toOption.map(Process.emit).getOrElse(Process.empty)
     }
-    Await.result(r, ttl.seconds)
-  }
+  )
+
+  @volatile var lastValidResponse: JsonNode = null
+
+  topic.subscribe.map(x => lastValidResponse = x).run.runAsync(f => f.leftMap(t => log.error(t)("failed to update the lastValidResponse cache")).rightMap(_ => log.error("lastValid Response cache updater exited with Unit")))
 
   def streamIt = {
-    val initialTick = Process.emit(0 seconds)
-    wye(initialTick, awakeEvery(1 second)(Strategy.DefaultStrategy, DefaultScheduler))(wye.merge).map { d =>
-      tick.foreach(_.mark())
-      Try {
-        getLatestCrest(url) // this function is memoized
-      }
-    }.flatMap {
-      case scala.util.Success(s) => Process.emit(s)
-      case scala.util.Failure(f) => log.warn(f)("failure when polling HTTP"); Process.empty
-    }.zipWithPrevious.filter {
-      case (_, (_, false)) => true // let it through if we're throwing errors
+    val cached = Process.emitAll(Option(lastValidResponse).toList)
+    wye(cached, topic.subscribe)(wye.mergeHaltR).zipWithPrevious.filter {
       case (x, y)          => !x.contains(y) // deduplicate
     }.flatMap { r =>
       val mainResponse = r match {
         // transform to JSON
-        case (None, (current, _)) =>
+        case (None, current) =>
           initial.foreach(_.mark())
           Some(s"""{"initial":${current.toString}}""") // first run!
-        case (Some((prev, _)), (current, true)) => // we've had a change in the JSON
+        case (Some(prev), current) => // we've had a change in the JSON
           diff.foreach(_.mark())
           val diffs = JsonDiff.asJson(prev, current).toString
           Some(s"""{"diff":${diffs}}""")
         case _ => None
       }
-      val extra: Option[String] = r match {
-        case (_, (_, false)) =>
-          unavail.foreach(_.mark())
-          Some(s"""{"status":"API unavailable, serving cached data"}""")
-        case _ =>
-          None
-      }
-      Process.emitAll(List(mainResponse, extra).flatten)
+      Process.emitAll(mainResponse.toList)
     }
   }
 
