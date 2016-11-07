@@ -111,6 +111,6 @@ class WaterslideServer(hostname: String, port: Int, url: String, ttl: Int, metri
 
   }
 
-  val server = BlazeBuilder.bindHttp(host = "localhost", port = port).withWebSockets(true).mountService(route, "/").start
+  val server = BlazeBuilder.bindHttp(host = hostname, port = port).withWebSockets(true).mountService(route, "/").start
 
 }
