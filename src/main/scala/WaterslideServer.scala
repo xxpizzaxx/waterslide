@@ -52,9 +52,6 @@ class WaterslideServer(hostname: String,
   val client = PooledHttp1Client()
   val OM = new ObjectMapper()
 
-  // last valid response cache
-  val lastValid = TrieMap[String, JsonNode]()
-
   val topic: Topic[JsonNode] = scalaz.stream.async.topic[JsonNode](
     time
       .awakeEvery(ttl.seconds)(Strategy.DefaultStrategy, DefaultScheduler)
@@ -82,6 +79,7 @@ class WaterslideServer(hostname: String,
       }
   )
 
+  // last valid response cache
   @volatile var lastValidResponse: JsonNode = null
 
   topic.subscribe
