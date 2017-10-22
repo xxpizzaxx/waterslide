@@ -12,7 +12,8 @@ object Main {
                     ttl: Int = 30,
                     consoleMetrics: Boolean = false,
                     graphite: Option[String] = None,
-                    graphitePrefix: String = "moe.pizza.waterslide")
+                    graphitePrefix: String = "moe.pizza.waterslide",
+                    diffmode: Boolean = false)
 
   val parser = new OptionParser[Config]("waterslide") {
     head("waterslide, the polling/websocket slide")
@@ -35,6 +36,9 @@ object Main {
     opt[String]("graphite_prefix").action { (x, c) =>
       c.copy(graphitePrefix = x)
     }.optional().text("prefix for graphite metrics, defaults to moe.pizza.waterslide")
+    opt[Boolean]("diffmode").action { (x, c) =>
+      c.copy(diffmode = true)
+    }
     arg[String]("url").action { (x, c) =>
       c.copy(url = x)
     }.text("required, URL to poll and serve")
@@ -63,7 +67,7 @@ object Main {
             .start(1, TimeUnit.SECONDS)
 
         }
-        val w = new WaterslideServer(config.host, config.port, config.url, config.ttl, Some(metrics))
+        val w = new WaterslideServer(config.host, config.port, config.url, config.ttl, config.diffmode, Some(metrics))
         println(s"Server starting on ${config.host}:${config.port}, serving ${config.url} with updates every ${config.ttl} seconds")
         w.server.run.awaitShutdown()
       case None =>

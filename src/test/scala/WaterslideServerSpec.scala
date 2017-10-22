@@ -58,8 +58,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
 
   "WaterslideServer" should "accept JSON every X seconds and stream it" in {
     val s  = mockServer(9500).run
-    val ws = new WaterslideServer("localhost", 9501, "http://localhost:9500/", 1, None)
-    ws.streamIt.take(2).runLog.run must equal(
+    val ws = new WaterslideServer("localhost", 9501, "http://localhost:9500/", 1, true, None)
+    ws.streamItDiff.take(2).runLog.run must equal(
         List(
             """{"initial":{"value":1}}""",
             """{"diff":[{"op":"replace","path":"/value","value":2}]}"""
@@ -69,9 +69,9 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
 
   "WaterslideServer" should "multiplex to multiple streams" in {
     val s       = mockServer(9502).run
-    val ws      = new WaterslideServer("localhost", 9503, "http://localhost:9502/", 2, None)
-    val stream1 = ws.streamIt
-    val stream2 = ws.streamIt
+    val ws      = new WaterslideServer("localhost", 9503, "http://localhost:9502/", 2, true, None)
+    val stream1 = ws.streamItDiff
+    val stream2 = ws.streamItDiff
     val merged  = wye(stream1, stream2)(wye.mergeHaltBoth)
     val expectedResults = List(
         """{"initial":{"value":1}}""",
@@ -89,8 +89,8 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
 
   "WaterslideServer" should "cope with bad responses" in {
     val s  = mockBadServer(9504).run
-    val ws = new WaterslideServer("localhost", 9505, "http://localhost:9504/", 1, None)
-    ws.streamIt.take(2).runLog.run must equal(
+    val ws = new WaterslideServer("localhost", 9505, "http://localhost:9504/", 1, true, None)
+    ws.streamItDiff.take(2).runLog.run must equal(
         List(
             """{"initial":{"value":1}}""",
             """{"diff":[{"op":"replace","path":"/value","value":3}]}"""
@@ -100,11 +100,24 @@ class WaterslideServerSpec extends FlatSpec with MustMatchers {
 
   "WaterslideServer" should "serve cached data if all current responses are bad, but it had a response once" in {
     val s  = mockVeryBadServer(9506).run
-    val ws = new WaterslideServer("localhost", 9507, "http://localhost:9506/", 1, None)
-    ws.streamIt.take(1).runLog.run must equal(
+    val ws = new WaterslideServer("localhost", 9507, "http://localhost:9506/", 1, true, None)
+    ws.streamItDiff.take(1).runLog.run must equal(
         List(
             """{"initial":{"value":1}}"""
         )
     )
+  }
+
+  "WaterslideServer" should "serve polled data in non-diff mode" in {
+    val s  = mockServer(9508).run
+    val ws = new WaterslideServer("localhost", 9509, "http://localhost:9508/", 1, false, None)
+    ws.streamIt.take(3).runLog.run must equal(
+        List(
+            """{"value":1}""",
+            """{"value":2}""",
+            """{"value":3}"""
+        )
+    )
+
   }
 }

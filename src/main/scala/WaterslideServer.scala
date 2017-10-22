@@ -37,6 +37,7 @@ class WaterslideServer(hostname: String,
                        port: Int,
                        url: String,
                        ttl: Int,
+                       diffmode: Boolean,
                        metrics: Option[MetricRegistry]) {
   private[this] val log = getLogger
 
@@ -94,6 +95,11 @@ class WaterslideServer(hostname: String,
 
   def streamIt = {
     val cached = Process.emitAll(Option(lastValidResponse).toList)
+    wye(cached, topic.subscribe)(wye.mergeHaltR).map(_.toString)
+  }
+
+  def streamItDiff = {
+    val cached = Process.emitAll(Option(lastValidResponse).toList)
     wye(cached, topic.subscribe)(wye.mergeHaltR).zipWithPrevious.filter {
       case (x, y) => !x.contains(y) // deduplicate
     }.flatMap { r =>
@@ -119,7 +125,7 @@ class WaterslideServer(hostname: String,
         ping.foreach(_.mark())
         Ping()
       }
-      val src = streamIt.map { x =>
+      val src = (if(diffmode) streamItDiff else streamIt).map { x =>
         Text(x)
       }
       val sink: Sink[Task, WebSocketFrame] = Process.constant {
